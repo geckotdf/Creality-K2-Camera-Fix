@@ -1,11 +1,14 @@
 # Creality-K2-Camera-Fix
 
+Hello,  
+
 This fix was developed to restore the ability to view the camera feed from another device on the local network.  
 Previously, it was possible to access port 8000 and view the camera via a web browser according to users, this functionality broke in a firmware version—though I do not know which one.  
 In my case, the feature was already broken when I bought the printer. So, I decided to recreate it to make it usable again.  
 I am sharing the project so others can adapt it to their needs.  
 
-Good luck!
+Good luck!  
+GecKoTDF - OldServers.com.ar  
 
 ---
 
