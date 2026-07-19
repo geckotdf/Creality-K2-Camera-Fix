@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Creality Camera</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      color: #f4f7f9;
+    }
+
+    body { position: relative; }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 2;
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, .18);
+      border-radius: 9px;
+      background: rgba(18, 22, 25, .82);
+      color: #f4f7f9;
+      font: 600 13px/1.2 inherit;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+    }
+
+    button:hover { background: rgba(39, 45, 49, .94); }
+    button:disabled { cursor: wait; opacity: .55; }
+
+    .status {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 2;
+      max-height: 30vh;
+      overflow: auto;
+      margin: 0;
+      padding: 11px 13px;
+      border: 1px solid rgba(255, 255, 255, .1);
+      border-radius: 9px;
+      background: rgba(18, 22, 25, .9);
+      color: #dce3e7;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+      backdrop-filter: blur(8px);
+    }
+
+    .status[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <video id="camera" autoplay muted playsinline></video>
+
+  <div class="controls">
+    <button id="reconnect" type="button">Reconnect</button>
+    <button id="toggleStatus" type="button" aria-expanded="false">Show status</button>
+  </div>
+
+  <pre id="status" class="status" hidden></pre>
+
+  <script>
+    "use strict";
+
+    const video = document.querySelector("#camera");
+    const statusBox = document.querySelector("#status");
+    const reconnectButton = document.querySelector("#reconnect");
+    const toggleStatusButton = document.querySelector("#toggleStatus");
+
+    const printerHost = location.hostname;
+    const printerAddress = printerHost.includes(":") ? `[${printerHost}]` : printerHost;
+
+    let peerConnection = null;
+    let printerSocket = null;
+    let attemptId = 0;
+    const logLines = [];
+
+    function setStatusOpen(open) {
+      statusBox.hidden = !open;
+      toggleStatusButton.textContent = open ? "Hide status" : "Show status";
+      toggleStatusButton.setAttribute("aria-expanded", String(open));
+    }
+
+    function log(message) {
+      const line = `${new Date().toLocaleTimeString()}  ${message}`;
+      logLines.push(line);
+      statusBox.textContent = logLines.join("\n");
+      console.log(`[Creality Camera] ${message}`);
+    }
+
+    function waitForIce(pc, timeoutMs = 8000) {
+      if (pc.iceGatheringState === "complete") return Promise.resolve();
+      return new Promise(resolve => {
+        const timeout = setTimeout(resolve, timeoutMs);
+        pc.addEventListener("icegatheringstatechange", () => {
+          if (pc.iceGatheringState === "complete") {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      });
+    }
+
+    function getPrinterSession(currentAttempt, timeoutMs = 7000) {
+      return new Promise((resolve, reject) => {
+        const socket = new WebSocket(`ws://${printerAddress}:9999`);
+        const session = { features: [], token: "" };
+        let settled = false;
+        printerSocket = socket;
+
+        const fail = message => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          socket.close();
+          reject(new Error(message));
+        };
+
+        const timeout = setTimeout(
+          () => fail("The printer did not provide a video token."),
+          timeoutMs
+        );
+
+        socket.addEventListener("open", () => {
+          if (currentAttempt !== attemptId) return fail("Connection cancelled.");
+          log("Control channel connected; requesting video token...");
+          socket.send(JSON.stringify({ method: "get", params: { getToken: 1 } }));
+        });
+
+        socket.addEventListener("message", event => {
+          if (event.data === "ok" || settled) return;
+          if (currentAttempt !== attemptId) return fail("Connection cancelled.");
+
+          try {
+            const message = JSON.parse(event.data);
+            if (Array.isArray(message.features)) session.features = message.features;
+            if (message.videoToken) {
+              settled = true;
+              clearTimeout(timeout);
+              session.token = message.videoToken.trim();
+              resolve(session);
+            }
+          } catch {
+            // Some telemetry messages are unrelated to the camera stream.
+          }
+        });
+
+        socket.addEventListener("error", () => fail(`Could not connect to ${printerHost}:9999.`));
+        socket.addEventListener("close", () => {
+          if (!settled) fail("The printer closed the control connection.");
+        });
+      });
+    }
+
+    // Reproduce the filtering used by Creality Print 7.2: keep one dynamic
+    // H.264 payload and preserve the ICE/DTLS lines at the end of the block.
+    function filterCrealitySdp(sdp) {
+      try {
+        const lines = sdp.split("\r\n");
+        const prefix = [];
+        const suffix = [];
+        const codecGroups = [];
+
+        for (let index = 0; index < lines.length; index++) {
+          const line = lines[index];
+          if (line.includes("a=rtpmap:")) {
+            const group = [];
+            for (;;) {
+              group.push(lines[index]);
+              if (index + 1 === lines.length || lines[index + 1].includes("a=rtpmap:")) {
+                codecGroups.push(group);
+                break;
+              }
+              index++;
+            }
+          }
+          if (codecGroups.length === 0) prefix.push(line);
+        }
+
+        const remove = [];
+        for (let index = 0; index < codecGroups.length; index++) {
+          if (index === codecGroups.length - 1) continue;
+          let discard = true;
+
+          for (const line of codecGroups[index]) {
+            if (line.includes("a=rtpmap:")) {
+              const payload = parseInt(line.split(" ")[0].split(":")[1], 10);
+              if (payload < 96 || payload > 127) break;
+            }
+            if (/H264/i.test(line)) {
+              discard = false;
+              break;
+            }
+          }
+
+          if (discard) remove.push(index);
+        }
+
+        for (let index = remove.length - 1; index >= 0; index--) {
+          codecGroups.splice(remove[index], 1);
+        }
+
+        if (codecGroups.length) {
+          const last = codecGroups[codecGroups.length - 1];
+          const payload = parseInt(last[0].split(" ")[0].split(":")[1], 10);
+          const codecLines = [];
+
+          for (const line of last) {
+            if (line.includes(`:${payload} `)) codecLines.push(line);
+            else suffix.push(line);
+          }
+
+          const valid = codecLines.some(line => /H264/i.test(line))
+            && payload >= 96
+            && payload <= 127;
+          if (valid) codecGroups[codecGroups.length - 1] = codecLines;
+          else codecGroups.splice(codecGroups.length - 1, 1);
+        }
+
+        if (!codecGroups.length) return sdp;
+        return [...prefix, ...codecGroups[0], ...suffix].join("\r\n");
+      } catch (error) {
+        log(`Could not filter the SDP: ${error.message}`);
+        return sdp;
+      }
+    }
+
+    function makeCandidatesNumeric(sdp) {
+      let replacements = 0;
+      const result = sdp.split("\r\n").map(line => {
+        if (!line.startsWith("a=candidate:")) return line;
+        const fields = line.split(" ");
+        if (fields[4] && fields[4].endsWith(".local")) {
+          // TEST-NET-1 is a reserved, non-routable address. The firmware only
+          // needs a numeric IP here; ICE learns the real LAN route itself.
+          fields[4] = "192.0.2.1";
+          replacements++;
+        }
+        return fields.join(" ");
+      }).join("\r\n");
+
+      log(`Prepared ${replacements} WebRTC candidate(s).`);
+      return result;
+    }
+
+    function closeConnections() {
+      attemptId++;
+
+      const oldPeer = peerConnection;
+      peerConnection = null;
+      if (oldPeer) oldPeer.close();
+
+      const oldSocket = printerSocket;
+      printerSocket = null;
+      if (oldSocket) oldSocket.close();
+
+      video.srcObject = null;
+    }
+
+    async function connect() {
+      if (!/^https?:$/.test(location.protocol) || !printerHost) {
+        throw new Error("Install this file in Fluidd and open it through http://PRINTER_IP:4408/camera.html.");
+      }
+
+      closeConnections();
+      const currentAttempt = attemptId;
+      logLines.length = 0;
+      statusBox.textContent = "";
+      log(`Connecting to ${printerHost}...`);
+
+      const session = await getPrinterSession(currentAttempt);
+      if (currentAttempt !== attemptId) return;
+
+      const encryptedProtocol = session.features.includes("videoInfo.videoEncryption");
+      log(`Using ${encryptedProtocol ? "token-protected" : "legacy"} WebRTC protocol.`);
+
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      peerConnection = pc;
+
+      pc.addEventListener("connectionstatechange", () => {
+        if (pc !== peerConnection) return;
+        log(`Connection state: ${pc.connectionState}.`);
+        if (pc.connectionState === "failed") setStatusOpen(true);
+      });
+
+      pc.addEventListener("iceconnectionstatechange", () => {
+        if (pc === peerConnection) log(`ICE state: ${pc.iceConnectionState}.`);
+      });
+
+      pc.addEventListener("track", event => {
+        if (pc !== peerConnection || event.track.kind !== "video") return;
+        video.srcObject = event.streams[0] || new MediaStream([event.track]);
+        video.play().catch(error => {
+          log(`The browser did not start playback: ${error.message}`);
+          setStatusOpen(true);
+        });
+      });
+
+      const transceiver = pc.addTransceiver("video", { direction: "sendrecv" });
+      const h264 = RTCRtpReceiver.getCapabilities("video").codecs
+        .filter(codec => codec.mimeType.toLowerCase() === "video/h264");
+
+      if (!h264.length) {
+        throw new Error("This browser does not provide H.264 decoding for WebRTC.");
+      }
+      if (typeof transceiver.setCodecPreferences === "function") {
+        transceiver.setCodecPreferences(h264);
+      }
+
+      await pc.setLocalDescription(await pc.createOffer());
+      await waitForIce(pc);
+      if (currentAttempt !== attemptId) return;
+
+      const request = {
+        type: "offer",
+        sdp: filterCrealitySdp(makeCandidatesNumeric(pc.localDescription.sdp))
+      };
+      if (encryptedProtocol) request.token = session.token;
+
+      const url = encryptedProtocol
+        ? `http://${printerAddress}/call/webrtc_local`
+        : `http://${printerAddress}:8000/call/webrtc_local`;
+      log("Requesting the camera stream...");
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "plain/text" },
+        body: btoa(JSON.stringify(request))
+      });
+      const responseText = (await response.text()).trim();
+
+      if (!response.ok) throw new Error(`The printer returned HTTP ${response.status}.`);
+      if (!responseText || responseText === "{}") {
+        throw new Error("The printer did not return a WebRTC answer.");
+      }
+
+      let answer;
+      try {
+        answer = JSON.parse(atob(responseText));
+      } catch {
+        throw new Error("The printer returned an invalid video response.");
+      }
+
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      log("Negotiation complete; waiting for video...");
+    }
+
+    async function start() {
+      reconnectButton.disabled = true;
+      try {
+        await connect();
+      } catch (error) {
+        log(`${error.name}: ${error.message}`);
+        setStatusOpen(true);
+        console.error(error);
+      } finally {
+        reconnectButton.disabled = false;
+      }
+    }
+
+    video.addEventListener("playing", () => {
+      log(`Live video: ${video.videoWidth}x${video.videoHeight}.`);
+    });
+
+    reconnectButton.addEventListener("click", start);
+    toggleStatusButton.addEventListener("click", () => setStatusOpen(statusBox.hidden));
+    window.addEventListener("beforeunload", closeConnections);
+
+    start();
+  </script>
+</body>
+</html>
