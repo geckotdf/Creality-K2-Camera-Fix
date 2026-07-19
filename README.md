@@ -118,6 +118,14 @@ This viewer is intended for trusted local networks. Do not expose the printer's 
 
 Enabling root access grants full control over the printer. Only copy files and run commands that you understand.
 
+## Screenshots
+
+Viewer:
+![Creality K2 camera viewer](images/1.png)
+
+Viewer + Status
+![Creality K2 camera viewer](images/2.png)
+
 ## Disclaimer
 
 This is an unofficial community project and is not affiliated with or endorsed by Creality. It relies on undocumented local interfaces that may change in future firmware releases. Use it at your own risk.
