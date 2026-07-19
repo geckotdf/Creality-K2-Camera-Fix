@@ -120,10 +120,12 @@ Enabling root access grants full control over the printer. Only copy files and r
 
 ## Screenshots
 
-Viewer:
+**Viewer:**
+
 ![Creality K2 camera viewer](images/1.png)
 
-Viewer + Status
+**Viewer + Status**
+
 ![Creality K2 camera viewer](images/2.png)
 
 ## Disclaimer
