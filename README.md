@@ -19,12 +19,17 @@ The project consists of a single dependency-free file, [`camera.html`](camera.ht
 ## Features
 
 - Direct, low-latency H.264 video over WebRTC.
-- Supports current token-protected camera firmware.
-- Retains compatibility with the legacy port `8000` signaling endpoint. (Theoretical, not validated, although it is no longer relevant.)
-- Automatically uses the Fluidd host address; there is no IP configuration.
-- Collapsible diagnostics panel and manual reconnect control.
-- Allows multiple simultaneous connections.
-- No cloud services, proxy, external libraries, analytics, or telemetry.
+- Support for current token-protected Creality camera firmware.
+- Automatic printer discovery from the Fluidd page address, with no IP configuration or saved addresses.
+- Live printer state, active filename, progress, current layer, total layers, elapsed time, and estimated remaining time.
+- Real-time nozzle, bed, and chamber temperatures, including separate current and target values when available.
+- Live movement speed and individual part, auxiliary, and chamber fan percentages.
+- Collapsible, responsive printer-status dashboard suitable for desktop and mobile browsers.
+- Separate collapsible debug console plus a manual reconnect control.
+- Multiple simultaneous browser connections supported by the printer.
+- A single self-contained `camera.html` file with no external assets or runtime dependencies.
+- Fully local operation: no cloud services, proxy, analytics, persistent storage, or outbound telemetry. Printer data remains in browser memory.
+- Experimental fallback for the former port `8000` signaling endpoint. This path is retained as a best-effort compatibility option but has not been validated on legacy firmware.
 
 ## Requirements
 
@@ -125,9 +130,14 @@ Enabling root access grants full control over the printer. Only copy files and r
 
 ![Creality K2 camera viewer](images/1.png)
 
-**Viewer + Status**
+**Viewer + Printer Status**
+
+![Creality K2 camera viewer](images/3.png)
+
+**Viewer + Debug**
 
 ![Creality K2 camera viewer](images/2.png)
+
 
 ## Disclaimer
 
