@@ -53,8 +53,179 @@
 
     button:hover { background: rgba(39, 45, 49, .94); }
     button:disabled { cursor: wait; opacity: .55; }
+    button.active {
+      border-color: rgba(75, 218, 145, .58);
+      background: rgba(29, 89, 60, .88);
+    }
 
-    .status {
+    .printer-panel {
+      position: absolute;
+      top: 56px;
+      right: 12px;
+      z-index: 2;
+      width: min(410px, calc(100% - 24px));
+      max-height: calc(100% - 80px);
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, .12);
+      border-radius: 14px;
+      background: rgba(15, 19, 22, .92);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, .35);
+      backdrop-filter: blur(12px);
+    }
+
+    .printer-panel[hidden] { display: none; }
+
+    .print-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .print-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #58dfa0;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .06em;
+    }
+
+    .print-state::before {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
+      content: "";
+    }
+
+    .print-state[data-state="paused"],
+    .print-state[data-state="processing"] { color: #ffbd59; }
+    .print-state[data-state="error"],
+    .print-state[data-state="stopped"] { color: #ff7373; }
+    .print-state[data-state="completed"] { color: #6ab8ff; }
+    .print-state[data-state="idle"],
+    .print-state[data-state="connecting"] { color: #aeb8be; }
+
+    .progress-value {
+      font-size: 24px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .file-name {
+      overflow: hidden;
+      margin: 9px 0 14px;
+      color: #f4f7f9;
+      font-size: 14px;
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress-track {
+      height: 6px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .1);
+    }
+
+    .progress-bar {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #36c981, #63e5a8);
+      transition: width .35s ease;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr);
+      gap: 9px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 10px 11px;
+      border: 1px solid rgba(255, 255, 255, .07);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .045);
+    }
+
+    .metric.wide { grid-column: 1 / -1; }
+
+    .metric-label {
+      display: block;
+      margin-bottom: 4px;
+      color: #96a2a9;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      display: block;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .telemetry-table {
+      width: 100%;
+      margin-top: 2px;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .telemetry-table th,
+    .telemetry-table td {
+      padding: 3px 5px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .telemetry-table thead th,
+    .telemetry-table tbody th {
+      color: #96a2a9;
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: .045em;
+      text-transform: uppercase;
+    }
+
+    .telemetry-table tbody th { text-align: left; }
+
+    .telemetry-table td {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .telemetry-table th + th,
+    .telemetry-table th + td,
+    .telemetry-table td + td {
+      border-left: 1px solid rgba(255, 255, 255, .07);
+    }
+
+    .temperature-table th:first-child { width: 58px; }
+    .fan-table th,
+    .fan-table td { padding-inline: 2px; }
+    .fan-table thead th {
+      font-size: 8px;
+      letter-spacing: .02em;
+    }
+    .fan-table th:first-child { width: 34px; }
+    .fan-metric { padding-inline: 8px; }
+
+    .debug {
       position: absolute;
       left: 12px;
       right: 12px;
@@ -73,7 +244,23 @@
       backdrop-filter: blur(8px);
     }
 
-    .status[hidden] { display: none; }
+    .debug[hidden] { display: none; }
+
+    @media (max-width: 540px) {
+      .controls {
+        left: 12px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+
+      button { padding: 8px 10px; }
+      .printer-panel { top: 92px; }
+    }
+
+    @media (max-width: 420px) {
+      .metrics { grid-template-columns: 1fr; }
+      .metric.wide { grid-column: auto; }
+    }
   </style>
 </head>
 <body>
@@ -81,18 +268,110 @@
 
   <div class="controls">
     <button id="reconnect" type="button">Reconnect</button>
-    <button id="toggleStatus" type="button" aria-expanded="false">Show status</button>
+    <button id="togglePrinterStatus" type="button" aria-expanded="false">Printer Status</button>
+    <button id="toggleDebug" type="button" aria-expanded="false">Debug</button>
   </div>
 
-  <pre id="status" class="status" hidden></pre>
+  <section id="printerPanel" class="printer-panel" aria-label="Printer status" hidden>
+    <div class="print-summary">
+      <span id="printState" class="print-state" data-state="connecting">CONNECTING</span>
+      <span id="printProgress" class="progress-value">--%</span>
+    </div>
+    <div id="printFile" class="file-name" title="">Waiting for printer data...</div>
+    <div class="progress-track" aria-hidden="true">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+    <div class="metrics">
+      <div class="metric">
+        <span class="metric-label">Layer</span>
+        <span id="printLayer" class="metric-value">-- / --</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Elapsed / Remaining</span>
+        <span id="printTime" class="metric-value">--:--:-- / --:--:--</span>
+      </div>
+      <div class="metric wide">
+        <span class="metric-label">Temperatures</span>
+        <table class="telemetry-table temperature-table">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Nozzle</th>
+              <th scope="col">Bed</th>
+              <th scope="col">Chamber</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Current</th>
+              <td id="nozzleCurrent">-- °C</td>
+              <td id="bedCurrent">-- °C</td>
+              <td id="chamberCurrent">-- °C</td>
+            </tr>
+            <tr>
+              <th scope="row">Target</th>
+              <td id="nozzleTarget">-- °C</td>
+              <td id="bedTarget">-- °C</td>
+              <td id="chamberTarget"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Speed</span>
+        <span id="printSpeed" class="metric-value">-- mm/s</span>
+      </div>
+      <div class="metric fan-metric">
+        <span class="metric-label">Fans</span>
+        <table class="telemetry-table fan-table">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Part</th>
+              <th scope="col">Aux</th>
+              <th scope="col">Chamber</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Speed</th>
+              <td id="partFan">--%</td>
+              <td id="auxiliaryFan">--%</td>
+              <td id="chamberFan">--%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <pre id="debug" class="debug" hidden></pre>
 
   <script>
     "use strict";
 
     const video = document.querySelector("#camera");
-    const statusBox = document.querySelector("#status");
+    const debugBox = document.querySelector("#debug");
+    const printerPanel = document.querySelector("#printerPanel");
     const reconnectButton = document.querySelector("#reconnect");
-    const toggleStatusButton = document.querySelector("#toggleStatus");
+    const togglePrinterStatusButton = document.querySelector("#togglePrinterStatus");
+    const toggleDebugButton = document.querySelector("#toggleDebug");
+    const printStateElement = document.querySelector("#printState");
+    const printProgressElement = document.querySelector("#printProgress");
+    const printFileElement = document.querySelector("#printFile");
+    const progressBar = document.querySelector("#progressBar");
+    const printLayerElement = document.querySelector("#printLayer");
+    const printTimeElement = document.querySelector("#printTime");
+    const nozzleCurrentElement = document.querySelector("#nozzleCurrent");
+    const bedCurrentElement = document.querySelector("#bedCurrent");
+    const chamberCurrentElement = document.querySelector("#chamberCurrent");
+    const nozzleTargetElement = document.querySelector("#nozzleTarget");
+    const bedTargetElement = document.querySelector("#bedTarget");
+    const chamberTargetElement = document.querySelector("#chamberTarget");
+    const printSpeedElement = document.querySelector("#printSpeed");
+    const partFanElement = document.querySelector("#partFan");
+    const auxiliaryFanElement = document.querySelector("#auxiliaryFan");
+    const chamberFanElement = document.querySelector("#chamberFan");
 
     const printerHost = location.hostname;
     const printerAddress = printerHost.includes(":") ? `[${printerHost}]` : printerHost;
@@ -100,19 +379,136 @@
     let peerConnection = null;
     let printerSocket = null;
     let attemptId = 0;
+    let telemetryReady = false;
     const logLines = [];
+    const printerState = {};
 
-    function setStatusOpen(open) {
-      statusBox.hidden = !open;
-      toggleStatusButton.textContent = open ? "Hide status" : "Show status";
-      toggleStatusButton.setAttribute("aria-expanded", String(open));
+    function setPrinterStatusOpen(open) {
+      printerPanel.hidden = !open;
+      togglePrinterStatusButton.classList.toggle("active", open);
+      togglePrinterStatusButton.setAttribute("aria-expanded", String(open));
+    }
+
+    function setDebugOpen(open) {
+      debugBox.hidden = !open;
+      toggleDebugButton.classList.toggle("active", open);
+      toggleDebugButton.setAttribute("aria-expanded", String(open));
     }
 
     function log(message) {
       const line = `${new Date().toLocaleTimeString()}  ${message}`;
       logLines.push(line);
-      statusBox.textContent = logLines.join("\n");
+      debugBox.textContent = logLines.join("\n");
       console.log(`[Creality Camera] ${message}`);
+    }
+
+    function numeric(value, fallback = 0) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function formatDuration(value) {
+      if (value === undefined || value === null || !Number.isFinite(Number(value))) return "--:--:--";
+      const seconds = Math.max(0, Math.round(Number(value)));
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const remainder = seconds % 60;
+      return [hours, minutes, remainder].map(part => String(part).padStart(2, "0")).join(":");
+    }
+
+    function formatTemperature(value) {
+      if (!Number.isFinite(Number(value)) || Number(value) <= 0) return "-- °C";
+      return `${Math.round(Number(value))} °C`;
+    }
+
+    function getFileName(path) {
+      if (!path) return "No active print";
+      return String(path).split(/[\\/]/).pop().replace(/\.gcode$/i, "");
+    }
+
+    function getFriendlyState() {
+      if (!telemetryReady) return { label: "CONNECTING", key: "connecting" };
+      const errorCode = numeric(printerState.err?.errcode, 0);
+      const rawState = numeric(printerState.state, -1);
+      const progress = numeric(printerState.printProgress ?? printerState.dProgress, 0);
+      const hasFile = Boolean(printerState.printFileName);
+
+      if (errorCode) return { label: "ERROR", key: "error" };
+      if (hasFile && progress >= 100) return { label: "COMPLETED", key: "completed" };
+      if (hasFile && rawState === 5) return { label: "PAUSED", key: "paused" };
+      if (hasFile && rawState === 4) return { label: "STOPPED", key: "stopped" };
+      if (hasFile && rawState === 1) return { label: "PRINTING", key: "printing" };
+      if (hasFile && rawState === 0) return { label: "PROCESSING", key: "processing" };
+      return { label: "IDLE", key: "idle" };
+    }
+
+    function renderPrinterStatus() {
+      const state = getFriendlyState();
+      printStateElement.textContent = state.label;
+      printStateElement.dataset.state = state.key;
+
+      if (!telemetryReady) {
+        printProgressElement.textContent = "--%";
+        printFileElement.textContent = "Waiting for printer data...";
+        printFileElement.title = "";
+        progressBar.style.width = "0%";
+        printLayerElement.textContent = "-- / --";
+        printTimeElement.textContent = "--:--:-- / --:--:--";
+        nozzleCurrentElement.textContent = "-- °C";
+        bedCurrentElement.textContent = "-- °C";
+        chamberCurrentElement.textContent = "-- °C";
+        nozzleTargetElement.textContent = "-- °C";
+        bedTargetElement.textContent = "-- °C";
+        chamberTargetElement.textContent = "";
+        printSpeedElement.textContent = "-- mm/s";
+        partFanElement.textContent = "--%";
+        auxiliaryFanElement.textContent = "--%";
+        chamberFanElement.textContent = "--%";
+        return;
+      }
+
+      const progress = Math.min(100, Math.max(0, numeric(
+        printerState.printProgress ?? printerState.dProgress,
+        0
+      )));
+      const fileName = getFileName(printerState.printFileName);
+
+      printProgressElement.textContent = `${Math.round(progress)}%`;
+      printFileElement.textContent = fileName;
+      printFileElement.title = fileName;
+      progressBar.style.width = `${progress}%`;
+
+      const layer = printerState.layer ?? "--";
+      const totalLayer = printerState.TotalLayer ?? "--";
+      printLayerElement.textContent = `${layer} / ${totalLayer}`;
+      printTimeElement.textContent = `${formatDuration(printerState.printJobTime)} / ${formatDuration(printerState.printLeftTime)}`;
+
+      nozzleCurrentElement.textContent = formatTemperature(printerState.nozzleTemp);
+      bedCurrentElement.textContent = formatTemperature(printerState.bedTemp0);
+      chamberCurrentElement.textContent = formatTemperature(printerState.boxTemp);
+      nozzleTargetElement.textContent = formatTemperature(printerState.targetNozzleTemp);
+      bedTargetElement.textContent = formatTemperature(printerState.targetBedTemp0);
+      chamberTargetElement.textContent = numeric(printerState.targetBoxTemp, 0) > 0
+        ? formatTemperature(printerState.targetBoxTemp)
+        : "";
+
+      const speed = Number.isFinite(Number(printerState.realTimeSpeed))
+        ? Math.round(Number(printerState.realTimeSpeed))
+        : "--";
+      printSpeedElement.textContent = `${speed} mm/s`;
+
+      const partFan = Math.round(numeric(printerState.modelFanPct, 0));
+      const auxiliaryFan = Math.round(numeric(printerState.auxiliaryFanPct, 0));
+      const chamberFan = Math.round(numeric(printerState.caseFanPct, 0));
+      partFanElement.textContent = `${partFan}%`;
+      auxiliaryFanElement.textContent = `${auxiliaryFan}%`;
+      chamberFanElement.textContent = `${chamberFan}%`;
+    }
+
+    function updatePrinterState(update) {
+      if (Object.keys(update).length) telemetryReady = true;
+      Object.assign(printerState, update);
+      renderPrinterStatus();
     }
 
     function waitForIce(pc, timeoutMs = 8000) {
@@ -155,13 +551,15 @@
         });
 
         socket.addEventListener("message", event => {
-          if (event.data === "ok" || settled) return;
+          if (event.data === "ok") return;
           if (currentAttempt !== attemptId) return fail("Connection cancelled.");
 
           try {
             const message = JSON.parse(event.data);
+            const { videoToken, ...telemetry } = message;
+            updatePrinterState(telemetry);
             if (Array.isArray(message.features)) session.features = message.features;
-            if (message.videoToken) {
+            if (message.videoToken && !settled) {
               settled = true;
               clearTimeout(timeout);
               session.token = message.videoToken.trim();
@@ -292,7 +690,10 @@
       closeConnections();
       const currentAttempt = attemptId;
       logLines.length = 0;
-      statusBox.textContent = "";
+      debugBox.textContent = "";
+      for (const key of Object.keys(printerState)) delete printerState[key];
+      telemetryReady = false;
+      renderPrinterStatus();
       log(`Connecting to ${printerHost}...`);
 
       const session = await getPrinterSession(currentAttempt);
@@ -307,7 +708,7 @@
       pc.addEventListener("connectionstatechange", () => {
         if (pc !== peerConnection) return;
         log(`Connection state: ${pc.connectionState}.`);
-        if (pc.connectionState === "failed") setStatusOpen(true);
+        if (pc.connectionState === "failed") setDebugOpen(true);
       });
 
       pc.addEventListener("iceconnectionstatechange", () => {
@@ -319,7 +720,7 @@
         video.srcObject = event.streams[0] || new MediaStream([event.track]);
         video.play().catch(error => {
           log(`The browser did not start playback: ${error.message}`);
-          setStatusOpen(true);
+          setDebugOpen(true);
         });
       });
 
@@ -378,7 +779,7 @@
         await connect();
       } catch (error) {
         log(`${error.name}: ${error.message}`);
-        setStatusOpen(true);
+        setDebugOpen(true);
         console.error(error);
       } finally {
         reconnectButton.disabled = false;
@@ -390,9 +791,13 @@
     });
 
     reconnectButton.addEventListener("click", start);
-    toggleStatusButton.addEventListener("click", () => setStatusOpen(statusBox.hidden));
+    togglePrinterStatusButton.addEventListener("click", () => {
+      setPrinterStatusOpen(printerPanel.hidden);
+    });
+    toggleDebugButton.addEventListener("click", () => setDebugOpen(debugBox.hidden));
     window.addEventListener("beforeunload", closeConnections);
 
+    renderPrinterStatus();
     start();
   </script>
 </body>
